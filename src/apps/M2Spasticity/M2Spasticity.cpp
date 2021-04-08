@@ -79,9 +79,12 @@ void M2Spasticity::init() {
         logHelper.add(robot->getEndEffVelocityRef(), "Velocity");
         logHelper.add(robot->getInteractionForceRef(), "Force");
         logHelper.startLogger();
-        //UIserver = new FLNLHelper(robot, "127.0.0.1");
-        UIserver = new FLNLHelper(robot, "192.168.6.2");
+        //UIserver = new FLNLHelper(robot, "127.0.0.1"); //Locally
+        //UIserver = new FLNLHelper(robot, "192.168.6.2"); //Linux
+        UIserver = new FLNLHelper(robot, "192.168.7.2"); //Windows
         UIserver->registerState(StateIndex); //example to register a continuous value
+        UIserver->registerState(AngularVelocity);
+        UIserver->registerState(STest->global_radius);
     }
     else {
         initialised = false;

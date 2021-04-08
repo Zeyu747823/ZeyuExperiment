@@ -268,7 +268,7 @@ class M2Recording : public M2TimedState {
 
     int RecordingPoint;
     VM2 PositionNow;
-    VM2 PositionRecorded[10000];
+    VM2 PositionRecorded[20000];
 
     int n;
     VM2 centroid;
