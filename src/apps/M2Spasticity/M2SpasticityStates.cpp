@@ -256,8 +256,11 @@ void M2Recording::duringCode(void) {
 
 	//Record stuff...
 	PositionNow=robot->getEndEffPosition();
-	PositionRecorded[RecordingPoint]=PositionNow;
-	RecordingPoint++;
+	if(RecordingPoint<MaxRecordingPts)
+	{
+        PositionRecorded[RecordingPoint]=PositionNow;
+        RecordingPoint++;
+    }
 
     if(iterations%100==1) {
         robot->printStatus();
@@ -275,7 +278,8 @@ void M2Recording::duringCode(void) {
         //
         // Inspired from Matlab function CircleFitByPratt by Nikolai Chernov
 
-        n = RecordingPoint-1;// number of data points
+        n = RecordingPoint;// number of data points
+        std::cout << n << " \n ";
         //Debug.Log("Number of points:" + n.ToString());
         //Find centroid of data set
         for (int i=0; i<n; i++)

@@ -267,8 +267,9 @@ class M2Recording : public M2TimedState {
     bool recordingError=false;
 
     int RecordingPoint;
+    static const int MaxRecordingPts = 10100;
     VM2 PositionNow;
-    VM2 PositionRecorded[20000];
+    VM2 PositionRecorded[MaxRecordingPts];
 
     int n;
     VM2 centroid;
