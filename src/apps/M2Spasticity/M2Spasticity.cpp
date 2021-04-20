@@ -85,6 +85,9 @@ void M2Spasticity::init() {
         UIserver->registerState(StateIndex); //example to register a continuous value
         UIserver->registerState(AngularVelocity);
         UIserver->registerState(STest->global_radius);
+        UIserver->registerState(STest->global_center_point[0]);
+        UIserver->registerState(STest->global_center_point[1]);
+        UIserver->registerState(STest->global_start_angle);
     }
     else {
         initialised = false;
