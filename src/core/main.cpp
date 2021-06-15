@@ -364,11 +364,12 @@ static void *rt_control_thread(void *arg) {
     struct period_info pinfo;
     periodic_task_init(&pinfo);
     app_programStart();
-
+    wait_rest_of_period(&pinfo);
     while (!readyToStart) {
         wait_rest_of_period(&pinfo);
     }
     while (endProgram == 0) {
+        periodic_task_init(&pinfo);
         app_programControlLoop();
         wait_rest_of_period(&pinfo);
     }
