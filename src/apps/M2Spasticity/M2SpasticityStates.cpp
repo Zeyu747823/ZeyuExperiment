@@ -47,9 +47,9 @@ void M2Calib::duringCode(void) {
 
     //Apply constant torque (with damping) unless stop has been detected for more than 0.5s
     VM2 vel=robot->getVelocity();
-    double b = 3;
+    double b = 200;
     for(int i=0; i<vel.size(); i++) {
-        tau(i) = -std::min(std::max(20 - b * vel(i), .0), 20.);
+        tau(i) = -std::min(std::max(50 + b * vel(i), .0), 50.);
         if(stop_reached_time(i)>1) {
             at_stop[i]=true;
         }
@@ -84,9 +84,11 @@ void M2Calib::exitCode(void) {
 
 
 void M2Transparent::entryCode(void) {
-    robot->initTorqueControl();
-    ForceP(0,0) = 1.3;
-    ForceP(1,1) = 1.4;
+    robot->initVelocityControl();
+    //ForceP(0,0) = 1.3; //use it for torque control
+    //ForceP(1,1) = 1.4;
+    ForceP(0,0) = 0.005; //use it for velocity control
+    ForceP(1,1) = 0.005;
 }
 void M2Transparent::duringCode(void) {
 
@@ -96,24 +98,28 @@ void M2Transparent::duringCode(void) {
 
     //Apply corresponding force
     VM2 f_m = robot->getInteractionForceRef();
-    robot->setEndEffForce(ForceP*f_m);
+    //robot->setEndEffForce(ForceP*f_m); //use it for torque control
+    robot->setEndEffVelocity(ForceP*f_m); //use it for velocity control
 
     if(iterations%100==1) {
         robot->printStatus();
     }
-    /*if(robot->keyboard->getS()) {
-        P(1,1)-=0.1;
-        std::cout << P <<std::endl;
-        std::cout << P*f_m <<std::endl;
+
+    if(robot->keyboard->getS()) {
+        ForceP(0,0)-=0.001;
+        ForceP(1,1)-=0.001;
+        //std::cout << ForceP(0,0) <<std::endl;
+        //std::cout << ForceP*f_m <<std::endl;
     }
     if(robot->keyboard->getW()) {
-        P(1,1)+=0.1;
-        std::cout << P(1,1) <<std::endl;
-        std::cout << P*f_m <<std::endl;
-    }*/
+        ForceP(0,0)+=0.001;
+        ForceP(1,1)+=0.001;
+        //std::cout << ForceP(0,0) <<std::endl;
+        //std::cout << ForceP*f_m <<std::endl;
+    }
 }
 void M2Transparent::exitCode(void) {
-    robot->setEndEffForce(VM2::Zero());
+    robot->setEndEffVelocity(VM2::Zero());
 }
 
 
@@ -241,18 +247,22 @@ void M2Recording::entryCode(void) {
     OWNER->StateIndex = 2.;
     recordingDone=false;
     recordingError=false;
-    robot->initTorqueControl();
-    robot->setEndEffForce(VM2::Zero());
+    robot->initVelocityControl();
+    robot->setEndEffVelocity(VM2::Zero());
 
-    ForceP(0,0) = 1.3;
-    ForceP(1,1) = 1.4;
+    //ForceP(0,0) = 1.3; //use it for torque control
+    //ForceP(1,1) = 1.4;
+    ForceP(0,0) = 0.005; //use if for velocity control
+    ForceP(1,1) = 0.005;
     //Define Variables
     RecordingPoint=0;
 }
 void M2Recording::duringCode(void) {
     //Transparent force control
+
+    //Apply corresponding force
     VM2 f_m = robot->getInteractionForceRef();
-    robot->setEndEffForce(ForceP*f_m);
+    robot->setEndEffVelocity(ForceP*f_m);
 
 	//Record stuff...
 	PositionNow=robot->getEndEffPosition();
@@ -269,7 +279,7 @@ void M2Recording::duringCode(void) {
     // allow 10 seconds for recording
     double t = elapsedTime;
     if(t>=10){
-        robot->setEndEffForce(VM2::Zero());
+        robot->setEndEffVelocity(VM2::Zero());
 
         ///Identify circle
 	    // Fit a circle on a data point cloud using Pratt method
@@ -390,7 +400,7 @@ void M2Recording::duringCode(void) {
     }
 }
 void M2Recording::exitCode(void) {
-    robot->setEndEffForce(VM2::Zero());
+    robot->setEndEffVelocity(VM2::Zero());
     OWNER->STest->movement_loop = 0; //for a new trial
 }
 
