@@ -156,6 +156,14 @@ class M2Transparent : public M2TimedState {
 
    private:
     Eigen::Matrix2d ForceP;
+
+    Eigen::Matrix2d B;
+    Eigen::Matrix2d M;
+    Eigen::Matrix2d Operator;
+    VM2 X;
+    VM2 dX;
+    VM2 Fm;
+    VM2 Vd;
 };
 
 
@@ -262,6 +270,14 @@ class M2Recording : public M2TimedState {
 
    private:
     Eigen::Matrix2d ForceP;
+
+    Eigen::Matrix2d B;
+    Eigen::Matrix2d M;
+    Eigen::Matrix2d Operator;
+    VM2 X;
+    VM2 dX;
+    VM2 Fm;
+    VM2 Vd;
 
     bool recordingDone=false;
     bool recordingError=false;

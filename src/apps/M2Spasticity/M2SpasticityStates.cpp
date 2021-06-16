@@ -12,6 +12,21 @@ double timeval_to_sec(struct timespec *ts)
     return (double)(ts->tv_sec + ts->tv_nsec / 1000000000.0);
 }
 
+
+VM2 myVE(VM2 X, VM2 dX, VM2 Fm, Eigen::Matrix2d B, Eigen::Matrix2d M, double dt)
+{
+    Eigen::Matrix2d realM;
+    Eigen::Matrix2d realB;
+    realB = B;
+    realM = M;
+    Eigen::Matrix2d Operator;
+    Operator(0,0) = 1/(realM(0,0) + realB(0,0)*dt);
+    Operator(1,1) = 1/(realM(1,1) + realB(1,1)*dt);
+    //return ;//
+    return Operator*(Fm*dt + realM*dX);
+}
+
+
 VM2 impedance(Eigen::Matrix2d K, Eigen::Matrix2d D, VM2 X0, VM2 X, VM2 dX, VM2 dXd=VM2::Zero()) {
     return K*(X0-X) + D*(dXd-dX);
 }
@@ -87,8 +102,10 @@ void M2Transparent::entryCode(void) {
     robot->initVelocityControl();
     //ForceP(0,0) = 1.3; //use it for torque control
     //ForceP(1,1) = 1.4;
-    ForceP(0,0) = 0.005; //use it for velocity control
-    ForceP(1,1) = 0.005;
+    //ForceP(0,0) = 0.005; //use it for velocity control
+    //ForceP(1,1) = 0.005;
+    M(0,0)=M(1,1)= 10.0; //Admittance control
+    B(0,0)=B(1,1)= 10.0;
 }
 void M2Transparent::duringCode(void) {
 
@@ -97,26 +114,41 @@ void M2Transparent::duringCode(void) {
     //double t=elapsedTime>settling_time?1.0:elapsedTime/settling_time;
 
     //Apply corresponding force
-    VM2 f_m = robot->getInteractionForceRef();
+    //VM2 f_m = robot->getInteractionForceRef();
     //robot->setEndEffForce(ForceP*f_m); //use it for torque control
-    robot->setEndEffVelocity(ForceP*f_m); //use it for velocity control
+    //robot->setEndEffVelocity(ForceP*f_m); //use it for velocity control
+
+    X = robot->getEndEffPosition();
+    dX = robot->getEndEffVelocity();
+    Fm = robot->getInteractionForceRef();
+    Vd = myVE(X, dX, Fm, B, M, dt);
+
+    if(robot->isEnabled())
+    {
+        robot->setEndEffVelocity(Vd);
+    }
+    else
+    {
+        if(OWNER->StateIndex!=22.){
+            OWNER->StateIndex = 24.;
+        }
+        //OWNER->goToTransparentFlag = true;
+    }
 
     if(iterations%100==1) {
         robot->printStatus();
     }
 
-    if(robot->keyboard->getS()) {
-        ForceP(0,0)-=0.001;
-        ForceP(1,1)-=0.001;
+    //if(robot->keyboard->getS()) {
+        //ForceP(0,0)-=0.001;
+        //ForceP(1,1)-=0.001;
         //std::cout << ForceP(0,0) <<std::endl;
-        //std::cout << ForceP*f_m <<std::endl;
-    }
-    if(robot->keyboard->getW()) {
-        ForceP(0,0)+=0.001;
-        ForceP(1,1)+=0.001;
+        //std::cout << ForceP*f_m <<std::endl; }
+    //if(robot->keyboard->getW()) {
+        //ForceP(0,0)+=0.001;
+        //ForceP(1,1)+=0.001;
         //std::cout << ForceP(0,0) <<std::endl;
-        //std::cout << ForceP*f_m <<std::endl;
-    }
+        //std::cout << ForceP*f_m <<std::endl; }
 }
 void M2Transparent::exitCode(void) {
     robot->setEndEffVelocity(VM2::Zero());
@@ -252,8 +284,10 @@ void M2Recording::entryCode(void) {
 
     //ForceP(0,0) = 1.3; //use it for torque control
     //ForceP(1,1) = 1.4;
-    ForceP(0,0) = 0.005; //use if for velocity control
-    ForceP(1,1) = 0.005;
+    //ForceP(0,0) = 0.005; //use if for velocity control
+    //ForceP(1,1) = 0.005;
+    M(0,0)=M(1,1)= 10.0; //Admittance control
+    B(0,0)=B(1,1)= 10.0;
     //Define Variables
     RecordingPoint=0;
 }
@@ -261,8 +295,23 @@ void M2Recording::duringCode(void) {
     //Transparent force control
 
     //Apply corresponding force
-    VM2 f_m = robot->getInteractionForceRef();
-    robot->setEndEffVelocity(ForceP*f_m);
+    //VM2 f_m = robot->getInteractionForceRef();
+    //robot->setEndEffVelocity(ForceP*f_m);
+
+    X = robot->getEndEffPosition();
+    dX = robot->getEndEffVelocity();
+    Fm = robot->getInteractionForceRef();
+    Vd = myVE(X, dX, Fm, B, M, dt);
+
+    if(robot->isEnabled())
+    {
+        robot->setEndEffVelocity(Vd);
+    }
+    else
+    {
+        OWNER->StateIndex = 5.;
+        OWNER->goToTransparentFlag = true;
+    }
 
 	//Record stuff...
 	PositionNow=robot->getEndEffPosition();

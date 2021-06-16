@@ -51,6 +51,7 @@ M2Spasticity::M2Spasticity() {
      //NewTransition(experimentState, goToNextState, experimentReturnState);
      //NewTransition(experimentReturnState, goToPrevState, experimentState);
      NewTransition(standbyState, maxForceReturn, minJerkState);
+     NewTransition(standbyState, goToTransparent, standbyState);
      NewTransition(recordingState, goToTransparent, standbyState);
      NewTransition(testingState, goToTransparent, standbyState);
      NewTransition(experimentState, goToTransparent, standbyState);
