@@ -13,6 +13,9 @@ Keyboard::Keyboard() {
     /* set the terminal */
     tcsetattr(STDIN_FILENO, TCSANOW, &noecho);
     spdlog::debug("Keyboard object created, echo disabled");
+
+    currentKeyStates.Nb.reserve(10);
+    clearCurrentStates();
 }
 Keyboard::~Keyboard() {
     /* restore the terminal settings */
@@ -120,7 +123,6 @@ void Keyboard::clearCurrentStates() {
 bool Keyboard::getA() {
     return currentKeyStates.a;
 };
-
 bool Keyboard::getS() {
     return currentKeyStates.s;
 };

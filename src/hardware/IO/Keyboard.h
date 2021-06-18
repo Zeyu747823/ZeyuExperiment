@@ -18,9 +18,11 @@
 #define KEYBOARD_H_INCLUDED
 
 #include <unistd.h>
+#include <vector>
+#include "termios.h"
 
 #include "InputDevice.h"
-#include "termios.h"
+
 #define NB_DISABLE 0
 #define NB_ENABLE 1
 
@@ -35,7 +37,7 @@ typedef struct keys {
     bool w;
     bool x;
     bool q;
-    bool Nb[10];//Number keys
+    std::vector<bool> Nb;//Number keys
 } key_states;
 
 /**
@@ -44,7 +46,7 @@ typedef struct keys {
  */
 class Keyboard : public InputDevice {
    private:
-    key_states currentKeyStates = {false, false, false, false, false, false};
+    key_states currentKeyStates;// = {false, false, false, false, false, false};
     int keyboardActive;
 
    public:
@@ -148,7 +150,7 @@ class Keyboard : public InputDevice {
 
     /**
      * \brief Does nothing as there are none here
-     * 
+     *
      */
     bool configureMasterPDOs(){return true;};
 };

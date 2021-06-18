@@ -110,8 +110,8 @@ void M2Transparent::entryCode(void) {
     //ForceP(1,1) = 0.005;
     M(0,0)=1.5;//Admittance control
     M(1,1)=1.5;
-    B(0,0)=5.0;
-    B(1,1)=5.0;
+    B(0,0)=10.0;
+    B(1,1)=10.0;
 }
 void M2Transparent::duringCode(void) {
 
@@ -138,11 +138,11 @@ void M2Transparent::duringCode(void) {
         //OWNER->goToTransparentFlag = true;
     }
 
-    if(iterations%100==1) {
+    /*if(iterations%100==1) {
         robot->printStatus();
-    }
+    }*/
 
-    /*
+/*
     if(robot->keyboard->getS()) {
         //M(0,0)-=0.1;
         M(1,1)-=0.1;
@@ -163,7 +163,7 @@ void M2Transparent::duringCode(void) {
         B(1,1)+=0.5;
         std::cout << B(0,0) << B(1,1) <<std::endl;
     }
-    */
+*/
 }
 void M2Transparent::exitCode(void) {
     robot->setEndEffVelocity(VM2::Zero());
@@ -288,7 +288,7 @@ void M2Recording::entryCode(void) {
     //ForceP(0,0) = 0.005; //use if for velocity control
     //ForceP(1,1) = 0.005;
     M(0,0)=M(1,1)= 1.5; //Admittance control
-    B(0,0)=B(1,1)= 5.0;
+    B(0,0)=B(1,1)= 10.0;
     //Define Variables
     RecordingPoint=0;
 }
@@ -318,9 +318,9 @@ void M2Recording::duringCode(void) {
         RecordingPoint++;
     }
 
-    if(iterations%100==1) {
+    /*if(iterations%100==1) {
         robot->printStatus();
-    }
+    }*/
 
     // allow 10 seconds for recording
     double t = elapsedTime;
@@ -605,10 +605,10 @@ void M2CircleTest::duringCode(void) {
         OWNER->goToTransparentFlag = true;
     }
 
-    if(iterations%100==1) {
+    /*if(iterations%100==1) {
         std::cout << dXd.transpose() << "  ";
         robot->printStatus();
-    }
+    }*/
 
     if(movement_finished && t>t_end_decel+3) { //wait three seconds
         OWNER->StateIndex=7.;
@@ -716,10 +716,10 @@ void M2ArcCircleReturn::duringCode(void) {
     //Apply
     robot->setEndEffVelocity(dX);
 
-    if(iterations%100==1) {
+    /*if(iterations%100==1) {
         std::cout << dXd.transpose() << "  ";
         robot->printStatus();
-    }
+    }*/
 }
 void M2ArcCircleReturn::exitCode(void) {
     robot->setEndEffVelocity(VM2::Zero());
