@@ -7,23 +7,17 @@
 #define OWNER ((M2Spasticity *)owner)
 
 
-double timeval_to_sec(struct timespec *ts)
-{
+double timeval_to_sec(struct timespec *ts) {
     return (double)(ts->tv_sec + ts->tv_nsec / 1000000000.0);
 }
 
 
-VM2 myVE(VM2 X, VM2 dX, VM2 Fm, Eigen::Matrix2d B, Eigen::Matrix2d M, double dt)
-{
-    Eigen::Matrix2d realM;
-    Eigen::Matrix2d realB;
-    realB = B;
-    realM = M;
+VM2 myVE(VM2 X, VM2 dX, VM2 Fm, Eigen::Matrix2d B, Eigen::Matrix2d M, double dt) {
     Eigen::Matrix2d Operator;
-    Operator(0,0) = 1/(realM(0,0) + realB(0,0)*dt);
-    Operator(1,1) = 1/(realM(1,1) + realB(1,1)*dt);
+    Operator(0,0) = 1./(M(0,0) + B(0,0)*dt);
+    Operator(1,1) = 1./(M(1,1) + B(1,1)*dt);
     //return ;//
-    return Operator*(Fm*dt + realM*dX);
+    return Operator*(Fm*dt + M*dX);
 }
 
 
@@ -46,13 +40,14 @@ double JerkIt(VM2 X0, VM2 Xf, double T, double t, VM2 &Xd, VM2 &dXd) {
 
 void M2Calib::entryCode(void) {
     calibDone=false;
+    calibAttempts=0;
     for(unsigned int i=0; i<2; i++) {
         stop_reached_time[i] = .0;
         at_stop[i] = false;
     }
     robot->decalibrate();
     robot->initTorqueControl();
-   // robot -> printStatus();
+    // robot -> printStatus();
     robot->printJointStatus();
     std::cout << "Calibrating (keep clear)..." << std::flush;
 }
@@ -77,19 +72,27 @@ void M2Calib::duringCode(void) {
     if(robot->isCalibrated()) {
         robot->setEndEffForceWithCompensation(VM2::Zero(), false);
         calibDone=true; //Trigger event
-    }
-    else {
+    } else {
         //If all joints are calibrated
         if(at_stop[0] && at_stop[1]) {
             robot->applyCalibration();
-            std::cout << "OK." << std::endl;
-        }
-        else {
+            calibAttempts++;
+            if(robot->isCalibrated())
+                std::cout << "OK." << std::endl;
+            else
+                std::cout << "..." << std::endl;
+        } else {
             robot->setJointTorque(tau);
             if(iterations%100==1) {
                 std::cout << "." << std::flush;
             }
         }
+    }
+
+    //Allow 5 attempts to calib sensors
+    if(calibAttempts>3) {
+        spdlog::critical("M2 calibration failed. Exiting...");
+        std::raise(SIGTERM); //Clean exit
     }
 }
 void M2Calib::exitCode(void) {
@@ -100,12 +103,15 @@ void M2Calib::exitCode(void) {
 
 void M2Transparent::entryCode(void) {
     robot->initVelocityControl();
+    robot->setEndEffVelocity(VM2::Zero());
     //ForceP(0,0) = 1.3; //use it for torque control
     //ForceP(1,1) = 1.4;
     //ForceP(0,0) = 0.005; //use it for velocity control
     //ForceP(1,1) = 0.005;
-    M(0,0)=M(1,1)= 10.0; //Admittance control
-    B(0,0)=B(1,1)= 10.0;
+    M(0,0)=1.5;//Admittance control
+    M(1,1)=1.5;
+    B(0,0)=5.0;
+    B(1,1)=5.0;
 }
 void M2Transparent::duringCode(void) {
 
@@ -123,13 +129,10 @@ void M2Transparent::duringCode(void) {
     Fm = robot->getInteractionForceRef();
     Vd = myVE(X, dX, Fm, B, M, dt);
 
-    if(robot->isEnabled())
-    {
+    if(robot->isEnabled()) {
         robot->setEndEffVelocity(Vd);
-    }
-    else
-    {
-        if(OWNER->StateIndex!=22.){
+    } else {
+        if(OWNER->StateIndex!=22. && OWNER->StateIndex!=23.) {
             OWNER->StateIndex = 24.;
         }
         //OWNER->goToTransparentFlag = true;
@@ -139,16 +142,28 @@ void M2Transparent::duringCode(void) {
         robot->printStatus();
     }
 
-    //if(robot->keyboard->getS()) {
-        //ForceP(0,0)-=0.001;
-        //ForceP(1,1)-=0.001;
-        //std::cout << ForceP(0,0) <<std::endl;
-        //std::cout << ForceP*f_m <<std::endl; }
-    //if(robot->keyboard->getW()) {
-        //ForceP(0,0)+=0.001;
-        //ForceP(1,1)+=0.001;
-        //std::cout << ForceP(0,0) <<std::endl;
-        //std::cout << ForceP*f_m <<std::endl; }
+    /*
+    if(robot->keyboard->getS()) {
+        //M(0,0)-=0.1;
+        M(1,1)-=0.1;
+        std::cout << M(0,0) << M(1,1) <<std::endl;
+    }
+    if(robot->keyboard->getW()) {
+        //M(0,0)+=0.1;
+        M(1,1)+=0.1;
+        std::cout << M(0,0) << M(1,1) <<std::endl;
+    }
+    if(robot->keyboard->getQ()) {
+        //B(0,0)-=0.5;
+        B(1,1)-=0.5;
+        std::cout << B(0,0) << B(1,1) <<std::endl;
+    }
+    if(robot->keyboard->getA()) {
+        //B(0,0)+=0.5;
+        B(1,1)+=0.5;
+        std::cout << B(0,0) << B(1,1) <<std::endl;
+    }
+    */
 }
 void M2Transparent::exitCode(void) {
     robot->setEndEffVelocity(VM2::Zero());
@@ -167,7 +182,9 @@ void M2ArcCircle::entryCode(void) {
     centerPt = OWNER->STest->global_center_point;
     startingPt = OWNER->STest->global_start_point;
 
-    for(int i=0; i<9; i++) {std::cout << "Velocity (overview) is " << ang_vel[OWNER->STest->vel_sequence[i]] << " degree/second \n";}
+    for(int i=0; i<9; i++) {
+        std::cout << "Velocity (overview) is " << ang_vel[OWNER->STest->vel_sequence[i]] << " degree/second \n";
+    }
 
     dTheta_t = ang_vel[OWNER->STest->vel_sequence[OWNER->STest->movement_loop]];
     OWNER->AngularVelocity = dTheta_t;
@@ -178,50 +195,38 @@ void M2ArcCircle::entryCode(void) {
     ddTheta=200;
     theta = theta_s;
 
-	//Initialise profile timing
-	t_init = 3.0; //waiting time before movement starts (need to be at least 0.8 because drives have a lag...)
-	t_end_accel = t_init + dTheta_t/ddTheta; //acceleration phase to reach constant angular velociy
-	t_end_cstt = t_end_accel + (thetaRange-(dTheta_t*dTheta_t)/ddTheta)/dTheta_t; //constant angular velocity phase: ensure total range is theta_range
-	t_end_decel = t_end_cstt + dTheta_t/ddTheta; //decelaration phase
+    //Initialise profile timing
+    t_init = 3.0; //waiting time before movement starts (need to be at least 0.8 because drives have a lag...)
+    t_end_accel = t_init + dTheta_t/ddTheta; //acceleration phase to reach constant angular velociy
+    t_end_cstt = t_end_accel + (thetaRange-(dTheta_t*dTheta_t)/ddTheta)/dTheta_t; //constant angular velocity phase: ensure total range is theta_range
+    t_end_decel = t_end_cstt + dTheta_t/ddTheta; //decelaration phase
 
-	//Define sign of movement based on starting angle
-	sign=1;
-	if(theta_s>90){
-		sign=-1;
-		}
+    //Define sign of movement based on starting angle
+    sign=1;
+    if(theta_s>90) {
+        sign=-1;
+    }
 }
 void M2ArcCircle::duringCode(void) {
     //Define velocity profile phase based on timing
     double dTheta = 0;
     VM2 dXd, Xd, dX;
     double t = elapsedTime;
-    if(t<t_init)
-    {
+    if(t<t_init) {
         dTheta=0;
-    }
-    else
-    {
-        if(t<t_end_accel)
-        {
+    } else {
+        if(t<t_end_accel) {
             //Acceleration phase
             dTheta=(t-t_init)*ddTheta;
-        }
-        else
-        {
-            if(t<=t_end_cstt)
-            {
+        } else {
+            if(t<=t_end_cstt) {
                 //Constant phase
                 dTheta=dTheta_t;
-            }
-            else
-            {
-                if(t<t_end_decel)
-                {
+            } else {
+                if(t<t_end_decel) {
                     //Deceleration phase
                     dTheta=dTheta_t-(t-t_end_cstt)*ddTheta;
-                }
-                else
-                {
+                } else {
                     //Profile finished
                     dTheta=0;
                     movement_finished = true;
@@ -249,12 +254,9 @@ void M2ArcCircle::duringCode(void) {
     //dX[0]=0; dX[1]=0;
 
     //Apply
-    if(robot->isEnabled())
-    {
+    if(robot->isEnabled()) {
         robot->setEndEffVelocity(dX);
-    }
-    else
-    {
+    } else {
         OWNER->StateIndex = 22.;
         OWNER->goToTransparentFlag = true;
     }
@@ -264,8 +266,7 @@ void M2ArcCircle::duringCode(void) {
         robot->printStatus();
     }
 
-    if(movement_finished && t>t_end_decel+3) //wait three seconds
-    {
+    if(movement_finished && t>t_end_decel+3) { //wait three seconds
         goToStartPt = true; //trigger event
     }
 }
@@ -286,8 +287,8 @@ void M2Recording::entryCode(void) {
     //ForceP(1,1) = 1.4;
     //ForceP(0,0) = 0.005; //use if for velocity control
     //ForceP(1,1) = 0.005;
-    M(0,0)=M(1,1)= 10.0; //Admittance control
-    B(0,0)=B(1,1)= 10.0;
+    M(0,0)=M(1,1)= 1.5; //Admittance control
+    B(0,0)=B(1,1)= 5.0;
     //Define Variables
     RecordingPoint=0;
 }
@@ -303,20 +304,16 @@ void M2Recording::duringCode(void) {
     Fm = robot->getInteractionForceRef();
     Vd = myVE(X, dX, Fm, B, M, dt);
 
-    if(robot->isEnabled())
-    {
+    if(robot->isEnabled()) {
         robot->setEndEffVelocity(Vd);
-    }
-    else
-    {
+    } else {
         OWNER->StateIndex = 5.;
         OWNER->goToTransparentFlag = true;
     }
 
-	//Record stuff...
-	PositionNow=robot->getEndEffPosition();
-	if(RecordingPoint<MaxRecordingPts)
-	{
+    //Record stuff...
+    PositionNow=robot->getEndEffPosition();
+    if(RecordingPoint<MaxRecordingPts) {
         PositionRecorded[RecordingPoint]=PositionNow;
         RecordingPoint++;
     }
@@ -327,11 +324,11 @@ void M2Recording::duringCode(void) {
 
     // allow 10 seconds for recording
     double t = elapsedTime;
-    if(t>=10){
+    if(t>=10) {
         robot->setEndEffVelocity(VM2::Zero());
 
         ///Identify circle
-	    // Fit a circle on a data point cloud using Pratt method
+        // Fit a circle on a data point cloud using Pratt method
         // V.Pratt, "Direct least-squares fitting of algebraic surfaces",
         // Computer Graphics, Vol. 21, pages 145-152 (1987)
         //
@@ -341,8 +338,7 @@ void M2Recording::duringCode(void) {
         std::cout << n << " \n ";
         //Debug.Log("Number of points:" + n.ToString());
         //Find centroid of data set
-        for (int i=0; i<n; i++)
-        {
+        for (int i=0; i<n; i++) {
             centroid += PositionRecorded[i];
             //std::cout << PositionRecorded[i].transpose() << " \n ";
         }
@@ -350,9 +346,13 @@ void M2Recording::duringCode(void) {
         //std::cout << centroid.transpose() << "  ";
 
         //computing moments(note: all moments will be normalised, i.e.divided by n)
-        Mxx = 0; Myy = 0; Mxy = 0; Mxz = 0; Myz = 0; Mzz = 0;
-        for (int j = 0; j < n; j++)
-        {
+        Mxx = 0;
+        Myy = 0;
+        Mxy = 0;
+        Mxz = 0;
+        Myz = 0;
+        Mzz = 0;
+        for (int j = 0; j < n; j++) {
             // centering data
             Xi = PositionRecorded[j][0] - centroid[0];
             //std::cout << PositionRecorded[j][1] << " \n ";
@@ -387,12 +387,10 @@ void M2Recording::duringCode(void) {
         xnew = 0;
 
         // Newton's method starting at x=0
-        for (int iter = 1; iter <= IterMax; iter++)
-        {
+        for (int iter = 1; iter <= IterMax; iter++) {
             yold = ynew;
             ynew = A0 + xnew * (A1 + xnew * (A2 + 4 * xnew * xnew));
-            if (abs(ynew) > abs(yold))
-            {
+            if (abs(ynew) > abs(yold)) {
                 //Debug.Log("Newton-Pratt goes wrong direction: |ynew| > |yold|");
                 xnew = 0;
                 break;
@@ -402,13 +400,11 @@ void M2Recording::duringCode(void) {
             xnew = xold - ynew / Dy;
             if (abs((xnew - xold) / xnew) < epsilon)
                 break;
-            if (iter >= IterMax)
-            {
+            if (iter >= IterMax) {
                 //Debug.Log("Newton-Pratt will not converge");
                 xnew = 0;
             }
-            if (xnew < 0)
-            {
+            if (xnew < 0) {
                 //Debug.Log("Newton-Pratt negative root:  x=" + xnew.ToString());
                 xnew = 0;
             }
@@ -433,7 +429,7 @@ void M2Recording::duringCode(void) {
 
 
         /// resonable parameters
-        if(radius>0.2 && radius<0.45 && StartPt[0]>=0 && StartPt[0]<=0.631 && StartPt[1]>=0 && StartPt[1]<=0.448 && abs(PositionRecorded[0][0]-PositionRecorded[n-1][0])>0.15 && abs(PositionRecorded[0][1]-PositionRecorded[n-1][1])>0.15){
+        if(radius>0.2 && radius<0.45 && StartPt[0]>=0 && StartPt[0]<=0.631 && StartPt[1]>=0 && StartPt[1]<=0.448 && abs(PositionRecorded[0][0]-PositionRecorded[n-1][0])>0.15 && abs(PositionRecorded[0][1]-PositionRecorded[n-1][1])>0.15) {
             //if parameters reasonable, give them to global variables
             OWNER->STest->global_center_point = Center;
             OWNER->STest->global_start_point = StartPt;
@@ -441,8 +437,7 @@ void M2Recording::duringCode(void) {
             OWNER->STest->global_start_angle = start_angle;
             OWNER->StateIndex = 3.;
             recordingDone=true;
-        }
-        else{
+        } else {
             OWNER->StateIndex = 5.;
             recordingError=true;
         }
@@ -472,14 +467,15 @@ void M2MinJerkPosition::duringCode(void) {
     //Compute current desired interpolated point
     double status=JerkIt(Xi, Xf, T, elapsedTime-startTime, Xd, dXd);
     //Apply position control
-    if(robot->isEnabled())
-    {
+    if(robot->isEnabled()) {
         robot->setEndEffVelocity(dXd+k_i*(Xd-robot->getEndEffPosition()));
-    }
-    else
-    {
-        if(OWNER->STest->movement_loop==0){OWNER->StateIndex = 21.;}
-        if(OWNER->STest->movement_loop>0){OWNER->StateIndex = 22.;}
+    } else {
+        if(OWNER->STest->movement_loop==0) {
+            OWNER->StateIndex = 21.;
+        }
+        if(OWNER->STest->movement_loop>0) {
+            OWNER->StateIndex = 22.;
+        }
         OWNER->goToTransparentFlag = true;
     }
 
@@ -488,29 +484,28 @@ void M2MinJerkPosition::duringCode(void) {
     VM2 distanceStPt=OWNER->STest->global_start_point-robot->getEndEffPosition();
 
     //Have we reached a point?
-    if (status>=1. && iterations%100==1){
-       //check if we reach the starting point
-       if(abs(distanceStPt[0])<=threshold && abs(distanceStPt[1])<=threshold){
+    if (status>=1. && iterations%100==1) {
+        //check if we reach the starting point
+        if(abs(distanceStPt[0])<=threshold && abs(distanceStPt[1])<=threshold) {
             //std::cout << "OK. \n";
-            if (OWNER->STest->movement_loop==0 && OWNER->StateIndex==3.){
+            if (OWNER->STest->movement_loop==0 && OWNER->StateIndex==3.) {
                 OWNER->StateIndex=4.;
             }
-            if (OWNER->STest->movement_loop==0 && OWNER->StateIndex==7.){
+            if (OWNER->STest->movement_loop==0 && OWNER->StateIndex==7.) {
                 OWNER->StateIndex=8.;
             }
-            if (OWNER->STest->movement_loop>=1 && OWNER->STest->movement_loop<=8){
+            if (OWNER->STest->movement_loop>=1 && OWNER->STest->movement_loop<=8) {
                 goToNextVel=true; //Trigger event: go to next velocity in one trial
             }
-            if (OWNER->STest->movement_loop>=9){
+            if (OWNER->STest->movement_loop>=9) {
                 OWNER->StateIndex = 20.;
                 OWNER->STest->movement_loop=0;
                 trialDone=true;
             }
-       }
-       else{
-           OWNER->StateIndex = 23.;
-           OWNER->goToTransparentFlag = true;
-       }
+        } else {
+            OWNER->StateIndex = 23.;
+            OWNER->goToTransparentFlag = true;
+        }
     }
 }
 void M2MinJerkPosition::exitCode(void) {
@@ -540,50 +535,38 @@ void M2CircleTest::entryCode(void) {
     ddTheta=200;
     theta = theta_s;
 
-	//Initialise profile timing
-	t_init = 3.0; //waiting time before movement starts (need to be at least 0.8 because drives have a lag...)
-	t_end_accel = t_init + dTheta_t/ddTheta; //acceleration phase to reach constant angular velociy
-	t_end_cstt = t_end_accel + (thetaRange-(dTheta_t*dTheta_t)/ddTheta)/dTheta_t; //constant angular velocity phase: ensure total range is theta_range
-	t_end_decel = t_end_cstt + dTheta_t/ddTheta; //decelaration phase
+    //Initialise profile timing
+    t_init = 3.0; //waiting time before movement starts (need to be at least 0.8 because drives have a lag...)
+    t_end_accel = t_init + dTheta_t/ddTheta; //acceleration phase to reach constant angular velociy
+    t_end_cstt = t_end_accel + (thetaRange-(dTheta_t*dTheta_t)/ddTheta)/dTheta_t; //constant angular velocity phase: ensure total range is theta_range
+    t_end_decel = t_end_cstt + dTheta_t/ddTheta; //decelaration phase
 
-	//Define sign of movement based on starting angle
-	sign=1;
-	if(theta_s>90){
-		sign=-1;
-		}
+    //Define sign of movement based on starting angle
+    sign=1;
+    if(theta_s>90) {
+        sign=-1;
+    }
 }
 void M2CircleTest::duringCode(void) {
     //Define velocity profile phase based on timing
     double dTheta = 0;
     VM2 dXd, Xd, dX;
     double t = elapsedTime;
-    if(t<t_init)
-    {
+    if(t<t_init) {
         dTheta=0;
-    }
-    else
-    {
-        if(t<t_end_accel)
-        {
+    } else {
+        if(t<t_end_accel) {
             //Acceleration phase
             dTheta=(t-t_init)*ddTheta;
-        }
-        else
-        {
-            if(t<=t_end_cstt)
-            {
+        } else {
+            if(t<=t_end_cstt) {
                 //Constant phase
                 dTheta=dTheta_t;
-            }
-            else
-            {
-                if(t<t_end_decel)
-                {
+            } else {
+                if(t<t_end_decel) {
                     //Deceleration phase
                     dTheta=dTheta_t-(t-t_end_cstt)*ddTheta;
-                }
-                else
-                {
+                } else {
                     //Profile finished
                     dTheta=0;
                     movement_finished = true;
@@ -605,7 +588,7 @@ void M2CircleTest::duringCode(void) {
     Xd[1] = centerPt[1]+radius*sin(theta*M_PI/180.);
 
     //desired position reaches bound
-    if(Xd[0]<0 || Xd[0]>0.631 || Xd[1]<0 || Xd[1]>0.448){
+    if(Xd[0]<0 || Xd[0]>0.631 || Xd[1]<0 || Xd[1]>0.448) {
         OWNER->StateIndex=5.;
         testingError = true; //trigger event
     }
@@ -615,12 +598,9 @@ void M2CircleTest::duringCode(void) {
     dX = dXd + K*(Xd-robot->getEndEffPosition());
 
     //Apply
-    if(robot->isEnabled())
-    {
+    if(robot->isEnabled()) {
         robot->setEndEffVelocity(dX);
-    }
-    else
-    {
+    } else {
         OWNER->StateIndex = 21.;
         OWNER->goToTransparentFlag = true;
     }
@@ -630,8 +610,7 @@ void M2CircleTest::duringCode(void) {
         robot->printStatus();
     }
 
-    if(movement_finished && t>t_end_decel+3) //wait three seconds
-    {
+    if(movement_finished && t>t_end_decel+3) { //wait three seconds
         OWNER->StateIndex=7.;
         testingDone = true; //trigger event
     }
@@ -642,11 +621,15 @@ void M2CircleTest::exitCode(void) {
     OWNER->AngularVelocity = 0.;
     OWNER->STest->movement_loop = 0; //for a new trial
     /// randomly order velocity
-    vector<int> vel_index_num={0,1,2,3,4,5,6,7,8};
+    vector<int> vel_index_num= {0,1,2,3,4,5,6,7,8};
     srand(time(0));
     random_shuffle(vel_index_num.begin(), vel_index_num.end());
-    for(int i=0; i<9; i++) {OWNER->STest->vel_sequence[i] = vel_index_num[i];}
-    for(int i=0; i<9; i++) {std::cout << "Velocity sequence is " << OWNER->STest->vel_sequence[i] << " \n";}
+    for(int i=0; i<9; i++) {
+        OWNER->STest->vel_sequence[i] = vel_index_num[i];
+    }
+    for(int i=0; i<9; i++) {
+        std::cout << "Velocity sequence is " << OWNER->STest->vel_sequence[i] << " \n";
+    }
 }
 
 
@@ -669,20 +652,20 @@ void M2ArcCircleReturn::entryCode(void) {
     thetaReturn = startReturnAngle;
     std::cout << "Current angle is " << thetaReturn << " degree \n";
 
-	//Initialise profile timing
-	t_init = 1.0; //waiting time before movement starts (need to be at least 0.8 because drives have a lag...)
-	t_end_accel = t_init + dTheta_t/ddTheta; //acceleration phase to reach constant angular velociy
-	t_end_cstt = t_end_accel + (thetaReturnRange-(dTheta_t*dTheta_t)/ddTheta)/dTheta_t; //constant angular velocity phase: ensure total range is theta_range
-	t_end_decel = t_end_cstt + dTheta_t/ddTheta; //decelaration phase
-	//std::cout << t_end_accel << " \n";
-	//std::cout << t_end_cstt << " \n";
-	//std::cout << t_end_decel << " \n";
+    //Initialise profile timing
+    t_init = 1.0; //waiting time before movement starts (need to be at least 0.8 because drives have a lag...)
+    t_end_accel = t_init + dTheta_t/ddTheta; //acceleration phase to reach constant angular velociy
+    t_end_cstt = t_end_accel + (thetaReturnRange-(dTheta_t*dTheta_t)/ddTheta)/dTheta_t; //constant angular velocity phase: ensure total range is theta_range
+    t_end_decel = t_end_cstt + dTheta_t/ddTheta; //decelaration phase
+    //std::cout << t_end_accel << " \n";
+    //std::cout << t_end_cstt << " \n";
+    //std::cout << t_end_decel << " \n";
 
-	//Define sign of movement based on starting angle
-	sign=-1;
-	if(theta_s>90){
-		sign=1;
-		}
+    //Define sign of movement based on starting angle
+    sign=-1;
+    if(theta_s>90) {
+        sign=1;
+    }
 }
 void M2ArcCircleReturn::duringCode(void) {
 
@@ -690,33 +673,21 @@ void M2ArcCircleReturn::duringCode(void) {
     double dThetaReturn = 0;
     VM2 dXd, Xd, dX;
     double t = elapsedTime;
-    if(t<t_init)
-    {
+    if(t<t_init) {
         dThetaReturn=0;
-    }
-    else
-    {
-        if(t<t_end_accel)
-        {
+    } else {
+        if(t<t_end_accel) {
             //Acceleration phase
             dThetaReturn=(t-t_init)*ddTheta;
-        }
-        else
-        {
-            if(t<=t_end_cstt)
-            {
+        } else {
+            if(t<=t_end_cstt) {
                 //Constant phase
                 dThetaReturn=dTheta_t;
-            }
-            else
-            {
-                if(t<t_end_decel)
-                {
+            } else {
+                if(t<t_end_decel) {
                     //Deceleration phase
                     dThetaReturn=dTheta_t-(t-t_end_cstt)*ddTheta;
-                }
-                else
-                {
+                } else {
                     //Profile finished
                     dThetaReturn=0;
                     finished = true;

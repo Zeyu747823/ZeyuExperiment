@@ -90,7 +90,10 @@ void RobotM2::applyCalibration() {
         ((JointM2 *)joints[i])->setPositionOffset(qCalibration[i]);
     }
     for (unsigned int i = 0; i < forceSensors.size(); i++) {
-        forceSensors[i]->calibrate();
+        if(!forceSensors[i]->calibrate()) {
+            calibrated = false;
+            return;
+        }
     }
 
     calibrated = true;

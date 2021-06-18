@@ -138,6 +138,7 @@ class M2Calib : public M2TimedState {
      VM2 stop_reached_time;
      bool at_stop[2];
      bool calibDone=false;
+     int calibAttempts=0;
 };
 
 

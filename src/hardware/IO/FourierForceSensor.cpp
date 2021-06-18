@@ -39,7 +39,7 @@ bool FourierForceSensor::calibrate(double calib_time) {
     std::string retMsg = returnMessage;
     spdlog::debug(retMsg);
     if (retMsg.find("ERROR") != std::string::npos) {
-        spdlog::error("[FourierForceSensor::calibrate]: Force Sensor {} error occured during zeroing", sensorNodeID);
+        spdlog::error("[FourierForceSensor::calibrate]: Force Sensor {} error occured during zeroing ({})", sensorNodeID, retMsg);
         return false;
     }
     //Perform zeroing

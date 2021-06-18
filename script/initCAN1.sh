@@ -6,8 +6,8 @@
 # $config-pin p9.24 can
 # $config-pin p9.26 can
 
-config-pin p9.24 can
-config-pin p9.26 can
+#config-pin p9.24 can
+#config-pin p9.26 can
 echo "Enabling CAN1"
 sudo ip link set can1 up type can bitrate 1000000
 sudo ifconfig can1 up
