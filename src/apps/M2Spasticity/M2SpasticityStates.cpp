@@ -110,7 +110,7 @@ void M2Transparent::entryCode(void) {
     //ForceP(1,1) = 0.005;
     M(0,0)=1.5;//Admittance control
     M(1,1)=1.5;
-    B(0,0)=10.0;
+    B(0,0)=15.0;
     B(1,1)=10.0;
 }
 void M2Transparent::duringCode(void) {
@@ -287,8 +287,10 @@ void M2Recording::entryCode(void) {
     //ForceP(1,1) = 1.4;
     //ForceP(0,0) = 0.005; //use if for velocity control
     //ForceP(1,1) = 0.005;
-    M(0,0)=M(1,1)= 1.5; //Admittance control
-    B(0,0)=B(1,1)= 10.0;
+    M(0,0)=1.5;//Admittance control
+    M(1,1)=1.5;
+    B(0,0)=15.0;
+    B(1,1)=10.0;
     //Define Variables
     RecordingPoint=0;
 }
@@ -495,7 +497,8 @@ void M2MinJerkPosition::duringCode(void) {
                 OWNER->StateIndex=8.;
             }
             if (OWNER->STest->movement_loop>=1 && OWNER->STest->movement_loop<=8) {
-                goToNextVel=true; //Trigger event: go to next velocity in one trial
+                //goToNextVel=true; //Trigger event: go to next velocity in one trial
+                OWNER->StateIndex = 10.;
             }
             if (OWNER->STest->movement_loop>=9) {
                 OWNER->StateIndex = 20.;
