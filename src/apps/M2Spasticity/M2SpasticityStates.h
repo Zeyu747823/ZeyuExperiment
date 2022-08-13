@@ -35,6 +35,7 @@ double global_start_angle;
  */
 double timeval_to_sec(struct timespec *ts);
 
+
 /**
  * \brief Generic state type for used with M2Spasticity, providing running time and iterations number.
  *
@@ -142,6 +143,38 @@ class M2Calib : public M2TimedState {
 };
 
 
+
+class M2ControlFB: public M2TimedState {
+
+   public:
+    M2ControlFB(StateMachine *m, RobotM2 *M2, const char *name = "M2 Control Feedback"):M2TimedState(m, M2, name){};
+
+    void entryCode(void);
+    void duringCode(void);
+    void exitCode(void);
+    bool isControlDone() {return ControlDone;}
+
+    double Cost=0;
+    int Iter=0;
+    double TorqueFFST=0;
+
+   private:
+    double TorqueFF;
+    bool ControlDone=false;
+    double startTime;
+    bool FFControl=true;
+    bool CostCal=true;
+    double T;
+    double FFUpdate;
+    double Dither1;
+    double Dither2;
+    float k_i=1.; //Integral gain
+};
+
+
+
+
+
 /**
  * \brief Provide end-effector mass compensation on M2. Mass is controllable through keyboard inputs.
  *
@@ -240,12 +273,10 @@ class M2MinJerkPosition: public M2TimedState {
     void duringCode(void);
     void exitCode(void);
 
-    bool GoToNextVel() {return goToNextVel;}
-    bool isTrialDone() {return trialDone;}
+    bool nextState() {return nextState_;}
 
    private:
-    bool goToNextVel=false;
-    bool trialDone=false;
+    bool nextState_=false;
     double startTime;
     VM2 Xi, Xf;
     double T;

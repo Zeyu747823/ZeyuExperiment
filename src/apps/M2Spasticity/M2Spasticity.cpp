@@ -9,6 +9,7 @@ M2Spasticity::M2Spasticity() {
     // Create PRE-DESIGNED State Machine events and state objects.
     calibState = new M2Calib(this, robot);
     standbyState = new M2Transparent(this, robot);
+    fbcontrol = new M2ControlFB(this, robot);
     recordingState = new M2Recording(this, robot);
     experimentState = new M2ArcCircle(this, robot);
     minJerkState = new M2MinJerkPosition(this, robot);
@@ -16,6 +17,7 @@ M2Spasticity::M2Spasticity() {
     testingState = new M2CircleTest(this, robot);
 
     endCalib = new EndCalib(this);
+    endControl = new EndControl(this);
     goToNextState = new GoToNextState(this);
     goToPrevState = new GoToPrevState(this);
     startRecording = new StartRecording(this);
@@ -25,9 +27,7 @@ M2Spasticity::M2Spasticity() {
     endTesting = new EndTesting(this);
     failTesting = new FailTesting(this);
     startTrial = new StartTrial(this);
-    startNextVel = new StartNextVel(this);
     startReturn = new StartReturn(this);
-    endTrial = new EndTrial(this);
     goToTransparent = new GoToTransparent(this);
     maxForceReturn = new MaxForceReturn(this);
 
@@ -38,30 +38,14 @@ M2Spasticity::M2Spasticity() {
      *
      */
      NewTransition(calibState, endCalib, standbyState);
-     NewTransition(standbyState, startRecording, recordingState);
-     NewTransition(recordingState, endRecording, minJerkState);
-     NewTransition(recordingState, failRecording, standbyState);
-     NewTransition(minJerkState, startTesting, testingState);
-     NewTransition(testingState, endTesting, minJerkState);
-     NewTransition(testingState, failTesting, standbyState);
-     NewTransition(minJerkState, startTrial, experimentState);
-     NewTransition(minJerkState, startNextVel, experimentState);
-     NewTransition(experimentState, startReturn, minJerkState);
-     NewTransition(minJerkState, endTrial, standbyState);
-     //NewTransition(experimentState, goToNextState, experimentReturnState);
-     //NewTransition(experimentReturnState, goToPrevState, experimentState);
-     NewTransition(standbyState, maxForceReturn, minJerkState);
-     NewTransition(standbyState, goToTransparent, standbyState);
-     NewTransition(recordingState, goToTransparent, standbyState);
-     NewTransition(testingState, goToTransparent, standbyState);
-     NewTransition(experimentState, goToTransparent, standbyState);
-     NewTransition(minJerkState, goToTransparent, standbyState);
+     NewTransition(standbyState, goToNextState, minJerkState);
+     NewTransition(minJerkState, goToNextState, fbcontrol);
+     NewTransition(fbcontrol, endControl, minJerkState);
 
     //Initialize the state machine with first state of the designed state machine, using baseclass function.
     StateMachine::initialize(calibState);
 }
 M2Spasticity::~M2Spasticity() {
-    delete UIserver;
     delete robot;
 }
 
@@ -74,21 +58,13 @@ void M2Spasticity::init() {
     spdlog::debug("M2Spasticity::init()");
     if(robot->initialise()) {
         initialised = true;
-        logHelper.initLogger("M2SpasticityLog", "logs/M2Spasticity.csv", LogFormat::CSV, true);
+        logHelper.initLogger("M2SpasticityLog", "logs/M2_ILC.csv", LogFormat::CSV, true);
         logHelper.add(time_running, "Time (s)");
         logHelper.add(robot->getEndEffPositionRef(), "Position");
         logHelper.add(robot->getEndEffVelocityRef(), "Velocity");
-        logHelper.add(robot->getInteractionForceRef(), "Force");
+        logHelper.add(robot->getEndEffForceRef(), "Force");
+        logHelper.add(RecordState, "State");
         logHelper.startLogger();
-        //UIserver = new FLNLHelper(robot, "127.0.0.1"); //Locally
-        //UIserver = new FLNLHelper(robot, "192.168.6.2"); //Linux
-        UIserver = new FLNLHelper(robot, "192.168.7.2"); //Windows
-        UIserver->registerState(StateIndex); //example to register a continuous value
-        UIserver->registerState(AngularVelocity);
-        UIserver->registerState(STest->global_radius);
-        UIserver->registerState(STest->global_center_point[0]);
-        UIserver->registerState(STest->global_center_point[1]);
-        UIserver->registerState(STest->global_start_angle);
     }
     else {
         initialised = false;
@@ -104,7 +80,6 @@ void M2Spasticity::end() {
     if(initialised) {
         if(logHelper.isStarted())
             logHelper.endLog();
-        UIserver->closeConnection();
         currentState->exit();
         robot->disable();
     }
@@ -123,7 +98,6 @@ void M2Spasticity::hwStateUpdate(void) {
     time_running = (std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - time_init).count()) / 1e6;
     robot->updateRobot();
-    UIserver->sendState();
 }
 
 
@@ -131,25 +105,15 @@ void M2Spasticity::hwStateUpdate(void) {
 bool M2Spasticity::EndCalib::check() {
     return OWNER->calibState->isCalibDone();
 }
+bool M2Spasticity::EndControl::check() {
+    return OWNER->fbcontrol->isControlDone();
+}
 
 
 bool M2Spasticity::GoToNextState::check() {
     //keyboard or joystick press
-    if ( (OWNER->robot->joystick->isButtonPressed(1) || OWNER->robot->keyboard->getNb()==1) )
+    if ( (OWNER->robot->joystick->isButtonPressed(1) || OWNER->robot->keyboard->getNb()==1 || OWNER->minJerkState->nextState()) )
         return true;
-
-    //Check incoming command requesting state change
-    if ( OWNER->UIserver->isCmd() ) {
-        string cmd;
-        vector<double> v;
-        OWNER->UIserver->getCmd(cmd, v);
-        if (cmd == "GTNS") { //Go To Next State command received
-            //Acknowledge
-            OWNER->UIserver->clearCmd();
-            OWNER->UIserver->sendCmd(string("OK"));
-            return true;
-        }
-    }
 
     //Otherwise false
     return false;
@@ -161,19 +125,6 @@ bool M2Spasticity::GoToPrevState::check() {
     if ( (OWNER->robot->joystick->isButtonPressed(1) || OWNER->robot->keyboard->getNb()==2) )
         return true;
 
-    //Check incoming command requesting state change
-    if ( OWNER->UIserver->isCmd() ) {
-        string cmd;
-        vector<double> v;
-        OWNER->UIserver->getCmd(cmd, v);
-        if (cmd == "GTPS") { //Go To Previous State command received
-            //Acknowledge
-            OWNER->UIserver->clearCmd();
-            OWNER->UIserver->sendCmd(string("OK"));
-            return true;
-        }
-    }
-
     //Otherwise false
     return false;
 }
@@ -183,19 +134,6 @@ bool M2Spasticity::StartRecording::check() {
     //keyboard or joystick press
     if ( (OWNER->robot->joystick->isButtonPressed(1) || OWNER->robot->keyboard->getNb()==3) )
         return true;
-
-    //Check incoming command requesting state change
-    if ( OWNER->UIserver->isCmd() ) {
-        string cmd;
-        vector<double> v;
-        OWNER->UIserver->getCmd(cmd, v);
-        if (cmd == "RECD") { //Start Recording command received
-            //Acknowledge
-            OWNER->UIserver->clearCmd();
-            OWNER->UIserver->sendCmd(string("OK"));
-            return true;
-        }
-    }
 
     //Otherwise false
     return false;
@@ -217,19 +155,6 @@ bool M2Spasticity::StartTesting::check() {
     if ( (OWNER->robot->joystick->isButtonPressed(1) || OWNER->robot->keyboard->getNb()==4) )
         return true;
 
-    //Check incoming command requesting state change
-    if ( OWNER->UIserver->isCmd() ) {
-        string cmd;
-        vector<double> v;
-        OWNER->UIserver->getCmd(cmd, v);
-        if (cmd == "TEST") { //Start Testing command received
-            //Acknowledge
-            OWNER->UIserver->clearCmd();
-            OWNER->UIserver->sendCmd(string("OK"));
-            return true;
-        }
-    }
-
     //Otherwise false
     return false;
 }
@@ -250,27 +175,10 @@ bool M2Spasticity::StartTrial::check() {
     if ( (OWNER->robot->joystick->isButtonPressed(1) || OWNER->robot->keyboard->getNb()==5) )
         return true;
 
-    //Check incoming command requesting state change
-    if ( OWNER->UIserver->isCmd() ) {
-        string cmd;
-        vector<double> v;
-        OWNER->UIserver->getCmd(cmd, v);
-        if (cmd == "TRIA") { //Start Trial command received
-            //Acknowledge
-            OWNER->UIserver->clearCmd();
-            OWNER->UIserver->sendCmd(string("OK"));
-            return true;
-        }
-    }
-
     //Otherwise false
     return false;
 }
 
-
-bool M2Spasticity::StartNextVel::check() {
-    return OWNER->minJerkState->GoToNextVel();
-}
 
 
 bool M2Spasticity::StartReturn::check() {
@@ -278,28 +186,11 @@ bool M2Spasticity::StartReturn::check() {
 }
 
 
-bool M2Spasticity::EndTrial::check() {
-    return OWNER->minJerkState->isTrialDone();
-}
-
 
 bool M2Spasticity::MaxForceReturn::check() {
     //keyboard or joystick press
     if ( (OWNER->robot->joystick->isButtonPressed(1) || OWNER->robot->keyboard->getNb()==8) )
         return true;
-
-    //Check incoming command requesting state change
-    if ( OWNER->UIserver->isCmd() ) {
-        string cmd;
-        vector<double> v;
-        OWNER->UIserver->getCmd(cmd, v);
-        if (cmd == "MFRT") { //Max Force Return command received
-            //Acknowledge
-            OWNER->UIserver->clearCmd();
-            OWNER->UIserver->sendCmd(string("OK"));
-            return true;
-        }
-    }
 
     //Otherwise false
     return false;
@@ -315,20 +206,6 @@ bool M2Spasticity::GoToTransparent::check() {
     {
         OWNER->goToTransparentFlag = false;
         return true;
-    }
-
-    //Check incoming command requesting state change
-    if ( OWNER->UIserver->isCmd() ) {
-        string cmd;
-        vector<double> v;
-        OWNER->UIserver->getCmd(cmd, v);
-        if (cmd == "REST") { //Go To Transparent command received
-            //Acknowledge
-            OWNER->UIserver->clearCmd();
-            OWNER->UIserver->sendCmd(string("OK"));
-            OWNER->StateIndex = 9.;
-            return true;
-        }
     }
 
     //Otherwise false

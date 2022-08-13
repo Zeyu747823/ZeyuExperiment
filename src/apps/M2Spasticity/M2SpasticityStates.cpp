@@ -5,6 +5,7 @@
 //#include <complex>
 
 #define OWNER ((M2Spasticity *)owner)
+#include <math.h>
 
 
 double timeval_to_sec(struct timespec *ts) {
@@ -168,6 +169,81 @@ void M2Transparent::duringCode(void) {
 void M2Transparent::exitCode(void) {
     robot->setEndEffVelocity(VM2::Zero());
 }
+
+
+//Add by Zeyu
+VM2 RefP2P(double RefT){
+   VM2 Ref;
+   Ref[0] = 0.05*RefT+0.1;
+   Ref[1] = 0.3/(1+exp(-1*(RefT-5)))+0.1;
+   return Ref;
+}
+
+void M2ControlFB::entryCode(void){
+    ControlDone=false;
+    robot->initTorqueControl();
+    Iter = Iter+1;
+    OWNER->RecordState = Iter;
+    //struct timespec tc;
+    //clock_gettime(CLOCK_MONOTONIC, &tc);
+    //double    Timestart = timeval_to_sec(&tc);
+        //std::cout << "Time is ["<< Timestart<< "] \n";
+    FFControl=true;
+    CostCal=true;
+    VM2 PosST = robot->getEndEffPosition();
+    std::cout << "Start is ["<< PosST.transpose()  << "] \n";
+
+}
+void M2ControlFB::duringCode(void){
+    VM2 TorqueFB,PosNow,PosRef;
+    double RefTime;
+    PosNow = robot->getEndEffPosition(); //Define X_z in head
+    RefTime = elapsedTime;
+    PosRef = RefP2P(RefTime);
+    FFUpdate = 0;
+    TorqueFF = 0;
+    if (RefTime>=4 && CostCal){
+       Cost = 100*(PosRef[1]-PosNow[1]);
+       Cost = Cost*Cost;
+       CostCal = false;
+    }
+    if (RefTime>=3.990 && FFControl && Iter>=2){
+       FFControl = false;
+       Dither1 = round(cos(0.5*3.1416*floor(Iter-2)));
+       Dither2 = round(sin(0.5*3.1416*floor(Iter-2)));
+       FFUpdate = 5* (sin(Cost)*Dither1+ cos(Cost)*Dither2);
+       TorqueFFST = TorqueFFST+FFUpdate;
+       std::cout << "cost1 is ["<< Cost<< "] \n";
+       std::cout << "FFUpdate is ["<< FFUpdate<< "] \n";
+       std::cout << "TorqueFF is ["<< TorqueFFST<< "] \n";
+    }
+    if (RefTime>=10){
+    TorqueFB[0] = 0;
+    TorqueFB[1] = 0;
+    ControlDone=true;
+    }
+    if (RefTime>=3.990 && RefTime<4){
+    TorqueFF=TorqueFFST;
+    }
+    if (RefTime<10){
+    TorqueFB[0] = 600*(PosRef[0]-PosNow[0]);
+    TorqueFB[1] = 600*(PosRef[1]-PosNow[1])+TorqueFF;
+    }
+    robot->setEndEffForce(TorqueFB);
+    //std::cout << "Reference is ["<< PosRef.transpose() << "] \n";
+    std::cout << "TorqueFB is ["<< TorqueFB.transpose() << "] \n";
+    //std::cout << "Time is ["<< RefTime<< "] \n";
+    //robot -> printStatus();
+}
+void M2ControlFB::exitCode(void) {
+    robot->setEndEffForce(VM2::Zero());
+}
+
+//End by Zeyu
+
+
+
+
 
 
 void M2ArcCircle::entryCode(void) {
@@ -455,14 +531,16 @@ void M2MinJerkPosition::entryCode(void) {
     //Setup velocity control for position over velocity loop
     robot->initVelocityControl();
     robot->setJointVelocity(VM2::Zero());
-    goToNextVel=false;
-    trialDone=false;
+    nextState_= false;
 
     startTime=elapsedTime;
     Xi = robot->getEndEffPosition();
-    Xf = OWNER->STest->global_start_point;
+    Xf = VM2::Zero();
+    Xf[0] = 0.1;
+    Xf[1] = 0.1;
     T=5; //Trajectory Time
     k_i=1.;
+    OWNER->RecordState = 0;
 }
 void M2MinJerkPosition::duringCode(void) {
     VM2 Xd, dXd;
@@ -472,43 +550,14 @@ void M2MinJerkPosition::duringCode(void) {
     if(robot->isEnabled()) {
         robot->setEndEffVelocity(dXd+k_i*(Xd-robot->getEndEffPosition()));
     } else {
-        if(OWNER->STest->movement_loop==0) {
-            OWNER->StateIndex = 21.;
-        }
-        if(OWNER->STest->movement_loop>0) {
-            OWNER->StateIndex = 22.;
-        }
         OWNER->goToTransparentFlag = true;
     }
-
-    //distance to the starting point
-    double threshold = 0.01;
-    VM2 distanceStPt=OWNER->STest->global_start_point-robot->getEndEffPosition();
 
     //Have we reached a point?
     if (status>=1. && iterations%100==1) {
         //check if we reach the starting point
-        if(abs(distanceStPt[0])<=threshold && abs(distanceStPt[1])<=threshold) {
-            //std::cout << "OK. \n";
-            if (OWNER->STest->movement_loop==0 && OWNER->StateIndex==3.) {
-                OWNER->StateIndex=4.;
-            }
-            if (OWNER->STest->movement_loop==0 && OWNER->StateIndex==7.) {
-                OWNER->StateIndex=8.;
-            }
-            if (OWNER->STest->movement_loop>=1 && OWNER->STest->movement_loop<=8) {
-                //goToNextVel=true; //Trigger event: go to next velocity in one trial
-                OWNER->StateIndex = 10.;
-            }
-            if (OWNER->STest->movement_loop>=9) {
-                OWNER->StateIndex = 20.;
-                OWNER->STest->movement_loop=0;
-                trialDone=true;
-            }
-        } else {
-            OWNER->StateIndex = 23.;
-            OWNER->goToTransparentFlag = true;
-        }
+        robot->setJointVelocity(VM2::Zero());
+        nextState_= true;
     }
 }
 void M2MinJerkPosition::exitCode(void) {

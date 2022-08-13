@@ -71,20 +71,22 @@ class M2Spasticity : public StateMachine {
     M2MinJerkPosition* minJerkState;
     M2ArcCircleReturn *experimentReturnState;
     M2CircleTest * testingState;
+    M2ControlFB * fbcontrol;
 
     SpasticityTest *STest;
 
     bool goToTransparentFlag = false;
 
+    int RecordState = 0;
     double StateIndex = 0.;
     double AngularVelocity = 0.;
 
    protected:
     RobotM2 *robot;         /*!< Pointer to the Robot*/
-    FLNLHelper *UIserver;   /*!< Pointer to communication server*/
 
    private:
     EventObject(EndCalib) * endCalib;
+    EventObject(EndControl) * endControl;
     EventObject(GoToNextState) * goToNextState;
     EventObject(GoToPrevState) * goToPrevState;
     EventObject(StartRecording) * startRecording;
@@ -94,9 +96,7 @@ class M2Spasticity : public StateMachine {
     EventObject(EndTesting) * endTesting;
     EventObject(FailTesting) * failTesting;
     EventObject(StartTrial) * startTrial;
-    EventObject(StartNextVel) * startNextVel;
     EventObject(StartReturn) * startReturn;
-    EventObject(EndTrial) * endTrial;
     EventObject(GoToTransparent) * goToTransparent;
     EventObject(MaxForceReturn) * maxForceReturn;
 };
