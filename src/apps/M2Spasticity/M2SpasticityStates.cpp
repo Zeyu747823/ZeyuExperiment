@@ -58,7 +58,7 @@ void M2Calib::duringCode(void) {
 
     //Apply constant torque (with damping) unless stop has been detected for more than 0.5s
     VM2 vel=robot->getVelocity();
-    double b = 200;
+    double b = 100;
     for(int i=0; i<vel.size(); i++) {
         tau(i) = -std::min(std::max(50 + b * vel(i), .0), 50.);
         if(stop_reached_time(i)>1) {
@@ -81,11 +81,11 @@ void M2Calib::duringCode(void) {
             if(robot->isCalibrated())
                 std::cout << "OK." << std::endl;
             else
-                std::cout << "..." << std::endl;
+                std::cout << "...1" << std::endl;
         } else {
             robot->setJointTorque(tau);
             if(iterations%100==1) {
-                std::cout << "." << std::flush;
+                std::cout << ".2" << std::flush;
             }
         }
     }
@@ -178,6 +178,12 @@ VM2 RefP2P(double RefT){
    Ref[1] = 0.3/(1+exp(-1*(RefT-5)))+0.1;
    return Ref;
 }
+VM2 VelRefP2P(double RefT){
+   VM2 VelR;
+   VelR[0] = 0.05;
+   VelR[1] = 0.3/(1+exp(-1*(RefT-5)))*(1-1/(1+exp(-1*(RefT-5))));
+   return VelR;
+}
 
 void M2ControlFB::entryCode(void){
     ControlDone=false;
@@ -188,52 +194,111 @@ void M2ControlFB::entryCode(void){
     //clock_gettime(CLOCK_MONOTONIC, &tc);
     //double    Timestart = timeval_to_sec(&tc);
         //std::cout << "Time is ["<< Timestart<< "] \n";
-    FFControl=true;
-    CostCal=true;
     VM2 PosST = robot->getEndEffPosition();
     std::cout << "Start is ["<< PosST.transpose()  << "] \n";
-
+    FFControl1=true;
+    FFControl2=true;
+    FFControl3=true;
+    CostCal1=true;
+    CostCal2=true;
+    CostCal3=true;
 }
 void M2ControlFB::duringCode(void){
-    VM2 TorqueFB,PosNow,PosRef;
-    double RefTime;
-    PosNow = robot->getEndEffPosition(); //Define X_z in head
+    VM2 TorqueFB,PosNow,PosRef,VelNow,VelRef;
+    double RefTime,ErP2PX,ErP2PY;
+    PosNow = robot->getEndEffPosition();
+    VelNow = robot->getEndEffVelocity();//Define X_z in head
     RefTime = elapsedTime;
     PosRef = RefP2P(RefTime);
-    FFUpdate = 0;
-    TorqueFF = 0;
-    if (RefTime>=4 && CostCal){
-       Cost = 100*(PosRef[1]-PosNow[1]);
-       Cost = Cost*Cost;
-       CostCal = false;
+    VelRef = VelRefP2P(RefTime);
+    FFUpdate1[0] = 0;
+    FFUpdate1[1] = 0;
+    FFUpdate2[0] = 0;
+    FFUpdate2[1] = 0;
+    FFUpdate3[0] = 0;
+    FFUpdate3[1] = 0;
+    TorqueFF[0] = 0;
+    TorqueFF[1] = 0;
+    if (RefTime>=2.5 && CostCal1){
+       ErP2PX = 100*(PosRef[0]-PosNow[0]);
+       ErP2PY = 100*(PosRef[1]-PosNow[1]);
+       Cost1= 10*(ErP2PX*ErP2PX+ErP2PY*ErP2PY);
+       CostCal1 = false;
+       std::cout << "Cost1 is ["<< Cost1/10 << "] \n";
     }
-    if (RefTime>=3.990 && FFControl && Iter>=2){
-       FFControl = false;
+     if (RefTime>=5 && CostCal2){
+       ErP2PX = 100*(PosRef[0]-PosNow[0]);
+       ErP2PY = 100*(PosRef[1]-PosNow[1]);
+       Cost2 = 10*(ErP2PX*ErP2PX+ErP2PY*ErP2PY);
+       CostCal2 = false;
+       std::cout << "Cost2 is ["<< Cost2/10 << "] \n";
+    }
+     if (RefTime>=7.5 && CostCal3){
+       ErP2PX = 100*(PosRef[0]-PosNow[0]);
+       ErP2PY = 100*(PosRef[1]-PosNow[1]);
+       Cost3 = 10*(ErP2PX*ErP2PX+ErP2PY*ErP2PY);
+       CostCal3 = false;
+       std::cout << "Cost3 is ["<< Cost3/10 << "] \n";
+       std::cout << "Iter is ["<< Iter << "] \n";
+    }
+    if (RefTime>=2.400 && FFControl1 && Iter>=2){
+       FFControl1 = false;
        Dither1 = round(cos(0.5*3.1416*floor(Iter-2)));
        Dither2 = round(sin(0.5*3.1416*floor(Iter-2)));
-       FFUpdate = 5* (sin(Cost)*Dither1+ cos(Cost)*Dither2);
-       TorqueFFST = TorqueFFST+FFUpdate;
-       std::cout << "cost1 is ["<< Cost<< "] \n";
-       std::cout << "FFUpdate is ["<< FFUpdate<< "] \n";
-       std::cout << "TorqueFF is ["<< TorqueFFST<< "] \n";
+       Dither3 = round(cos(0.5*3.1416*floor((Iter-2)/2)));
+       Dither4 = round(sin(0.5*3.1416*floor((Iter-2)/2)));
+       FFUpdate1[0] = 4*ep*(sin(Cost1)*Dither1+cos(Cost1)*Dither2);
+       FFUpdate1[1] = 2*ep*(sin(Cost1)*Dither3+cos(Cost1)*Dither4);
+       TorqueFFST1[0] = TorqueFFST1[0]+FFUpdate1[0];
+       TorqueFFST1[1] = TorqueFFST1[1]+FFUpdate1[1];
+    }
+    if (RefTime>=4.900 && FFControl2 && Iter>=2){
+       FFControl2 = false;
+       FFUpdate2[0] = 4*ep*(sin(Cost2)*Dither1+cos(Cost2)*Dither2);
+       FFUpdate2[1] = 2*ep*(sin(Cost2)*Dither3+cos(Cost2)*Dither4);
+       TorqueFFST2[0] = TorqueFFST2[0]+FFUpdate2[0];
+       TorqueFFST2[1] = TorqueFFST2[1]+FFUpdate2[1];
+    }
+    if (RefTime>=7.400 && FFControl3 && Iter>=2){
+       FFControl3 = false;
+       FFUpdate3[0] = 4*ep*(sin(Cost3)*Dither1+cos(Cost3)*Dither2);
+       FFUpdate3[1] = 2*ep*(sin(Cost3)*Dither3+cos(Cost3)*Dither4);
+       TorqueFFST3[0] = TorqueFFST3[0]+FFUpdate3[0];
+       TorqueFFST3[1] = TorqueFFST3[1]+FFUpdate3[1];
     }
     if (RefTime>=10){
     TorqueFB[0] = 0;
     TorqueFB[1] = 0;
     ControlDone=true;
     }
-    if (RefTime>=3.990 && RefTime<4){
-    TorqueFF=TorqueFFST;
+    if (RefTime>=2.400 && RefTime<2.5){
+    TorqueFF[0]=TorqueFFST1[0];
+    TorqueFF[1]=TorqueFFST1[1];
+    }
+    if (RefTime>=4.900 && RefTime<5){
+    TorqueFF[0]=TorqueFFST2[0];
+    TorqueFF[1]=TorqueFFST2[1];
+    }
+    if (RefTime>=7.400 && RefTime<7.5){
+    TorqueFF[0]=TorqueFFST3[0];
+    TorqueFF[1]=TorqueFFST3[1];
     }
     if (RefTime<10){
-    TorqueFB[0] = 600*(PosRef[0]-PosNow[0]);
-    TorqueFB[1] = 600*(PosRef[1]-PosNow[1])+TorqueFF;
+    TorqueFB[0] = 1500*(PosRef[0]-PosNow[0])+50*(VelRef[0]-VelNow[0])+TorqueFF[0];
+    TorqueFB[1] = 1500*(PosRef[1]-PosNow[1])+50*(VelRef[0]-VelNow[0])+TorqueFF[1];
     }
+//    if(RefTime<10){
+//        std::cout<< "TorqueFB is ["<< TorqueFB.transpose() << "] \n";
+//        std::cout<< "PosRef is ["<< PosRef.transpose() << "] \n";
+//        std::cout<< "PosNow is ["<< PosNow.transpose()<< "] \n";
+//    }
+
+    OWNER->TFF1 = TorqueFF[0];
+    OWNER->TFF2 = TorqueFF[1];
+    OWNER->Cost1 = Cost1;
+    OWNER->Cost2 = Cost2;
+    OWNER->Cost3 = Cost3;
     robot->setEndEffForce(TorqueFB);
-    //std::cout << "Reference is ["<< PosRef.transpose() << "] \n";
-    std::cout << "TorqueFB is ["<< TorqueFB.transpose() << "] \n";
-    //std::cout << "Time is ["<< RefTime<< "] \n";
-    //robot -> printStatus();
 }
 void M2ControlFB::exitCode(void) {
     robot->setEndEffForce(VM2::Zero());
@@ -536,8 +601,8 @@ void M2MinJerkPosition::entryCode(void) {
     startTime=elapsedTime;
     Xi = robot->getEndEffPosition();
     Xf = VM2::Zero();
-    Xf[0] = 0.1;
-    Xf[1] = 0.1;
+    Xf[0] = 0.1+0.001*((rand() %10)-5);
+    Xf[1] = 0.3/(1+exp(5))+0.1+0.001*((rand() %10)-5);
     T=5; //Trajectory Time
     k_i=1.;
     OWNER->RecordState = 0;

@@ -154,20 +154,28 @@ class M2ControlFB: public M2TimedState {
     void exitCode(void);
     bool isControlDone() {return ControlDone;}
 
-    double Cost=0;
+    double Cost1=0;
+    double Cost2=0;
+    double Cost3=0;
     int Iter=0;
-    double TorqueFFST=0;
+    VM2 TorqueFFST1,TorqueFFST2,TorqueFFST3;
 
    private:
-    double TorqueFF;
+    VM2 FFUpdate1,FFUpdate2,FFUpdate3,TorqueFF;
     bool ControlDone=false;
     double startTime;
-    bool FFControl=true;
-    bool CostCal=true;
+    bool FFControl1=true;
+    bool FFControl2=true;
+    bool FFControl3=true;
+    bool CostCal1=true;
+    bool CostCal2=true;
+    bool CostCal3=true;
     double T;
-    double FFUpdate;
     double Dither1;
     double Dither2;
+    double Dither3;
+    double Dither4;
+    double ep=0.9;
     float k_i=1.; //Integral gain
 };
 

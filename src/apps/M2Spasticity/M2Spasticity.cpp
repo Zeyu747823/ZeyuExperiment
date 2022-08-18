@@ -63,7 +63,12 @@ void M2Spasticity::init() {
         logHelper.add(robot->getEndEffPositionRef(), "Position");
         logHelper.add(robot->getEndEffVelocityRef(), "Velocity");
         logHelper.add(robot->getEndEffForceRef(), "Force");
-        logHelper.add(RecordState, "State");
+        logHelper.add(RecordState, "Iter");
+        logHelper.add(Cost1, "Cost1");
+        logHelper.add(Cost2, "Cost2");
+        logHelper.add(Cost3, "Cost3");
+        logHelper.add(TFF1, "TFF1");
+        logHelper.add(TFF2, "TFF2");
         logHelper.startLogger();
     }
     else {

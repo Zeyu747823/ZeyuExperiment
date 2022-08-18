@@ -78,6 +78,11 @@ class M2Spasticity : public StateMachine {
     bool goToTransparentFlag = false;
 
     int RecordState = 0;
+    double Cost1 = 0;
+    double Cost2 = 0;
+    double Cost3 = 0;
+    double TFF1 = 0;
+    double TFF2 = 0;
     double StateIndex = 0.;
     double AngularVelocity = 0.;
 
